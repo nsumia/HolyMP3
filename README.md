@@ -2,6 +2,8 @@
 
 A pocket ESP32-S3 handheld: MP3 player, WiFi tool and game player, with a 2.8" touchscreen.
 
+> ⚠️ **Known issue in r2:** the SD finger recess on the back shell cuts through the end wall, leaving a ~34 x 8 mm opening instead of a slot. A fixed r3 is coming; don't print `back-shell-r2.stl` yet.
+
 ![HolyMP3 case](images/iso-r2.png)
 
 ## Hardware
