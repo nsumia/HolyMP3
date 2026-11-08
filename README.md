@@ -36,3 +36,7 @@ python cad/case.py out/
 - Battery version (LiPo + USB-C charger, about 8 mm taller)
 - Pinholes for BOOT/RESET once button positions are measured
 - Firmware
+
+## License
+- Code (`cad/*.py`): [MIT](LICENSE)
+- 3D models, renders and docs (`stl/`, `step/`, `images/`, `*.md`): [CC BY 4.0](LICENSE-CC-BY-4.0.txt). You can share and adapt them, including commercially, as long as you credit "HolyMP3 by nsumia" and link this repo.
