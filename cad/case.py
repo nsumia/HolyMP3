@@ -8,20 +8,30 @@ import cadquery as cq
 # --- Case rules ---
 WALL      = 2.8    # side wall thickness (tongue 1.2 + clearance 0.25 + lip 1.35)
 FLOOR_T   = 2.4    # back shell floor (2.4: 1.6 deep counterbore leaves 0.8 mm)
-TOP_T     = 1.6    # bezel top plate thickness
+TOP_T     = 2.4    # bezel top plate thickness (2.4 so the M3 pilots leave a 1.1 mm face skin)
 CLR       = 0.3    # clearance around boards in plan
 IN_R      = 4.0    # interior vertical corner radius (outer = IN_R + WALL)
 EDGE_FIL  = 1.2    # outer bottom/top edge fillet
 # --- Screen module (assumed ILI9341 2.8" red PCB) ---
 SCR_L, SCR_W, SCR_PCB_T = 86.0, 50.0, 1.6   # PCB size
-GLASS_L, GLASS_W, GLASS_T = 69.2, 50.0, 2.4 # glass/LCD panel on top of PCB (assumed flush to +X end)
+GLASS_L, GLASS_W, GLASS_T = 69.2, 50.0, 2.4 # glass/LCD panel on top of PCB
+GLASS_X_SHIFT = 0.0                          # glass centre offset in X from PCB centre. r3: 0 (centred, so the corner mounting holes are free of glass); r2 had +8.4 (flush to +X end)
+# TFT M3 mounting (assumed typical 2.8in red module; MEASURE): 4 holes at PCB corners
+TFT_HOLE_D   = 3.2                           # PCB hole diameter
+TFT_HOLE_INX = 3.5                           # hole centre inset from the short edges (X)
+TFT_HOLE_INY = 3.5                           # hole centre inset from the long edges (Y)
+M3_STANDOFF_D = 6.5                          # bezel standoff OD (pilot wall 2.0)
+M3_PILOT_D, M3_PILOT_DEPTH = 2.5, 3.8        # self-tapping pilot, measured from PCB top face
+M3_LEN, M3_HEAD_D, M3_HEAD_H = 5.0, 5.5, 2.0 # M3 x 5 pan head screw from the back
 ACTIVE_L, ACTIVE_W = 57.6, 43.2             # visible active area (centered on glass)
 WINDOW_MARGIN = 1.0                          # bezel window = active + 2*margin
-SCR_BACK_CLR  = 1.0                          # assumed max height of parts on PCB back (except SD socket)
-SD_L, SD_W, SD_H = 15.0, 14.0, 2.0           # SD socket body on PCB back, at -X end
+SCR_BACK_CLR  = 3.5                   # PCB underside to tails top: = SD_H + 0.5; lets the SD socket and M3 heads sit over the perfboard stack
+SD_L, SD_W, SD_H = 28.0, 26.0, 3.0           # FULL-SIZE SD socket body on PCB back, at -X end (assumed)
+SD_PROTRUDE = 2.5                            # inserted card end sticks out past the PCB edge by this much
+CARD_L, CARD_W, CARD_T = 32.0, 24.0, 2.1     # full SD card
 SD_Y_OFF = 0.0                               # SD socket centre offset in Y from case centre
-SD_REC_W, SD_REC_DEPTH = 24.0, 1.8       # finger recess on outer -X wall (leaves WALL-depth = 1.0 mm around the slot)
-SD_CUT_W, SD_CUT_H = 14.0, 4.0               # wall cutout for SD card (+ finger access)
+SD_REC_W, SD_REC_DEPTH = 34.0, 1.8       # finger recess on outer -X wall (leaves WALL-depth = 1.0 mm around the slot)
+SD_CUT_W, SD_CUT_H = CARD_W + 2.0, CARD_T + 1.9               # wall cutout for SD card (+ finger access)
 # --- Perfboard with ESP32-S3 (components face DOWN to floor, solder side up) ---
 PERF_L, PERF_W, PERF_T = 70.0, 30.0, 1.6
 PERF_Y = -10.5                               # perfboard centre Y
@@ -43,10 +53,11 @@ JACK_CUT_D   = 8.6                           # wall hole for 3.5 mm plug (collar
 END_GAP      = 0.3                           # ports-end boards stop this far from the wall
 # --- Screws ---
 SCREW_D = 2.5            # M2.5 self-tapping
-BOSS_D, PILOT_D, PILOT_DEPTH = 5.0, 2.1, 9.0
-THRU_D, CBORE_D, CBORE_DEPTH = 2.8, 5.2, 1.6   # screw: M2.5 x 8 pan head (head 1.6 high sits flush)
+BOSS_D, PILOT_D, PILOT_DEPTH = 4.4, 1.6, 9.0   # M2 self-tapping: boss wall 1.4
+THRU_D, CBORE_D, CBORE_DEPTH = 2.4, 4.4, 1.6   # screw: M2 x 8 pan head (head 4.0 dia x 1.6 high sits flush, 0.8 mm floor under it)
+BOSS_FIL = 0.6                                   # conical fillet at boss base on bezel plate
 BOSS_X = 30.0            # boss X (+/-)
-STRIP  = 6.6             # side strip beside the screen where bosses live
+STRIP  = 6.0             # side strip beside the screen where bosses live
 # --- Joint / ledges ---
 TONGUE_T, TONGUE_H, TONGUE_CLR = 1.2, 1.5, 0.25
 PAD_L, PAD_OVER = 8.0, 1.2    # corner ledge length along X, PCB overlap
@@ -103,17 +114,6 @@ def make_shell():
     t_out = rrect(INT_L + 2 * TONGUE_T, INT_W + 2 * TONGUE_T, IN_R + TONGUE_T, Z_SPLIT, TONGUE_H)
     t_in = rrect(INT_L, INT_W, IN_R, Z_SPLIT, TONGUE_H)
     shell = shell.union(t_out.cut(t_in))
-    # corner ledge pads with 45 deg underside (printable without support)
-    yw = YI + 0.5
-    yin = SCR_W / 2 - PAD_OVER
-    zt = Z_SCR_LOW
-    for sx in (1, -1):
-        for sy in (1, -1):
-            pts = [(yin, zt), (yw, zt), (yw, zt - (yw - yin))]
-            pts = [(sy * a, b) for a, b in pts]
-            pad = cq.Workplane("YZ").polyline(pts).close().extrude(PAD_L + 0.5)
-            pad = pad.translate((XI - PAD_L if sx > 0 else -XI - 0.5, 0, 0))
-            shell = shell.union(pad.intersect(outer_solid))
     # perfboard support posts (under outer margins of the perfboard)
     px0, px1 = X_END - PERF_L, X_END
     py0, py1 = PERF_Y - PERF_W / 2, PERF_Y + PERF_W / 2
@@ -149,7 +149,7 @@ def make_shell():
     shell = cut_x(shell, SD_Y_OFF, SD_Z, SD_CUT_W, SD_CUT_H, -1, r=1.0)
     rz0, rz1 = SD_Z - 5.5, Z_SPLIT - 0.8
     rec = (cq.Workplane("YZ").center(SD_Y_OFF, (rz0 + rz1) / 2).rect(SD_REC_W, rz1 - rz0).extrude(SD_REC_DEPTH + 2)
-           .edges("|X").fillet(2.5).translate((-XI - WALL - 2 + SD_REC_DEPTH, 0, 0)))
+           .edges("|X").fillet(2.5).translate((-XI - WALL - 2, 0, 0)))   # runs from outer face inward by SD_REC_DEPTH
     shell = shell.cut(rec)
     # vent slots in floor under the ESP
     for i in range(VENT_N):
@@ -160,7 +160,8 @@ def make_shell():
 
 
 # ---------------- front bezel (design orientation: plate on top) ----------------
-GLASS_X0 = -SCR_L / 2 + (SCR_L - GLASS_L)      # glass flush to +X end of PCB
+GLASS_X0 = -GLASS_L / 2 + GLASS_X_SHIFT
+TFT_HOLES = [(sx * (SCR_L / 2 - TFT_HOLE_INX), sy * (SCR_W / 2 - TFT_HOLE_INY)) for sx in (1, -1) for sy in (1, -1)]
 GLASS_CX = GLASS_X0 + GLASS_L / 2
 
 
@@ -186,19 +187,30 @@ def make_bezel():
             b = cq.Workplane("XY").workplane(offset=Z_FLOOR + 0.2).center(*c).circle(BOSS_D / 2) \
                 .extrude(Z_PLATE_LOW - Z_FLOOR - 0.2 + 0.2)
             hole = cq.Workplane("XY").workplane(offset=Z_FLOOR + 0.2).center(*c).circle(PILOT_D / 2).extrude(PILOT_DEPTH)
-            bez = bez.union(b).cut(hole)
-    # clamp pads over bare PCB corners at -X end (no glass there)
-    for sy in (1, -1):
-        y0, y1 = sorted((sy * (SCR_W / 2 - PAD_OVER), sy * (SCR_W / 2 + 1.5)))
-        bez = bez.union(box(-XI + 0.4, -XI + PAD_L - 1, y0, y1, Z_SPLIT, Z_PLATE_LOW + 0.1))
+            cone = cq.Workplane(obj=cq.Solid.makeCone(BOSS_D / 2, BOSS_D / 2 + BOSS_FIL, BOSS_FIL,
+                   cq.Vector(c[0], c[1], Z_PLATE_LOW - BOSS_FIL), cq.Vector(0, 0, 1)))
+            bez = bez.union(b).union(cone).cut(hole)
+    # M3 standoffs on screen PCB mounting holes (PCB is clamped between standoff and screw head from the back)
+    for (hx, hy) in TFT_HOLES:
+        so = box(hx - 0.0, hx, hy, hy, 0, 0) if False else (cq.Workplane("XY").workplane(offset=Z_SPLIT).center(hx, hy)
+              .circle(M3_STANDOFF_D / 2).extrude(Z_PLATE_LOW - Z_SPLIT + 0.2))
+        pil = cq.Workplane("XY").workplane(offset=Z_SPLIT).center(hx, hy).circle(M3_PILOT_D / 2).extrude(M3_PILOT_DEPTH)
+        bez = bez.union(so).cut(pil)
     return bez
 
 
 # ---------------- placeholder components ----------------
 def make_components():
     c = {}
-    c["screen_pcb"] = box(-SCR_L / 2, SCR_L / 2, -SCR_W / 2, SCR_W / 2, Z_SCR_LOW, Z_SPLIT)
-    c["screen_glass"] = box(GLASS_X0, SCR_L / 2, -GLASS_W / 2, GLASS_W / 2, Z_SPLIT, Z_GLASS_UP)
+    pcb = box(-SCR_L / 2, SCR_L / 2, -SCR_W / 2, SCR_W / 2, Z_SCR_LOW, Z_SPLIT)
+    for (hx, hy) in TFT_HOLES:
+        pcb = pcb.cut(cq.Workplane("XY").workplane(offset=Z_SCR_LOW - 1).center(hx, hy).circle(TFT_HOLE_D / 2).extrude(SCR_PCB_T + 2))
+    c["screen_pcb"] = pcb
+    for i, (hx, hy) in enumerate(TFT_HOLES):
+        head = cq.Workplane("XY").workplane(offset=Z_SCR_LOW - M3_HEAD_H).center(hx, hy).circle(M3_HEAD_D / 2).extrude(M3_HEAD_H)
+        shaft = cq.Workplane("XY").workplane(offset=Z_SCR_LOW).center(hx, hy).circle(1.2).extrude(M3_LEN)
+        c[f"m3_screw{i+1}"] = head.union(shaft)
+    c["screen_glass"] = box(GLASS_X0, GLASS_X0 + GLASS_L, -GLASS_W / 2, GLASS_W / 2, Z_SPLIT, Z_GLASS_UP)
     c["sd_socket"] = box(-SCR_L / 2, -SCR_L / 2 + SD_L, SD_Y_OFF - SD_W / 2, SD_Y_OFF + SD_W / 2,
                          Z_SCR_LOW - SD_H, Z_SCR_LOW)
     px0, px1 = X_END - PERF_L, X_END
@@ -228,7 +240,9 @@ def make_plugs():
         p[f"plug_usb{i+1}"] = box(X_END - 0.5, far, yc - 6, yc + 6, USB_Z - 3.5, USB_Z + 3.5).edges("|X").fillet(2.0)
     p["plug_jack"] = (cq.Workplane("YZ").center(DAC_Y, JACK_Z).circle(4.0).extrude(far - (X_END - 0.5))
                       .translate((X_END - 0.5, 0, 0)))
-    p["sd_card"] = box(-XI - WALL - 15, -SCR_L / 2 + 8, SD_Y_OFF - 5.75, SD_Y_OFF + 5.75, SD_Z - 1.0, SD_Z + 1.0)
+    # full card travel: fully inserted (end sticks out SD_PROTRUDE past PCB edge) to pulled 15 mm clear of the case
+    p["sd_card"] = box(-XI - WALL - 15, -SCR_L / 2 - SD_PROTRUDE + CARD_L, SD_Y_OFF - CARD_W / 2, SD_Y_OFF + CARD_W / 2,
+                       SD_Z - CARD_T / 2, SD_Z + CARD_T / 2)
     return p
 
 
@@ -252,7 +266,9 @@ if __name__ == "__main__":
                    frozenset(("perfboard", "solder_tails")), frozenset(("esp_pcb", "esp_shield")),
                    frozenset(("esp_pcb", "esp_usb1")), frozenset(("esp_pcb", "esp_usb2")),
                    frozenset(("esp_shield", "esp_usb1")), frozenset(("esp_shield", "esp_usb2")),
-                   frozenset(("dac_pcb", "dac_jack"))}   # touching/overlap-by-design pairs within one assembly
+                   frozenset(("dac_pcb", "dac_jack"))}
+    for i in range(1, 5):
+        groups_skip.add(frozenset((f"m3_screw{i}", "screen_pcb")))   # touching/overlap-by-design pairs within one assembly
     bad = []
     for (a, wa), (b, wb) in itertools.combinations(items.items(), 2):
         if frozenset((a, b)) in groups_skip:
@@ -273,6 +289,13 @@ if __name__ == "__main__":
             v = pl.intersect(items[cn])
             hit += v.val().Volume() if v.vals() else 0.0
         ok[name] = {"volume_in_case_material": round(hit, 3)}
+        if name == "sd_card":
+            oc = 0.0
+            for cn, cw in comps.items():
+                if cn == "sd_socket": continue
+                v = pl.intersect(cw); oc += v.val().Volume() if v.vals() else 0.0
+            ok[name]["volume_in_other_components"] = round(oc, 3)
+            v = pl.intersect(comps["sd_socket"]); ok[name]["volume_in_sd_socket_(expected>0)"] = round(v.val().Volume(), 1)
     rep["ports"] = ok
     # printability
     rep["bed_fit"] = {"shell": [OUT_L, OUT_W, Z_SPLIT + TONGUE_H], "bezel": [OUT_L, OUT_W, round(Z_TOP - Z_FLOOR - 0.2, 2)],
